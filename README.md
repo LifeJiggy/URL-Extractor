@@ -76,7 +76,7 @@ A powerful, standalone Python tool for extracting all URLs and file extensions f
 
 - **🔧 Configurable Parameters**: Fine-grained control over all aspects
 
-- **📦 PyPI Package**: Ready for `pip install url-extractor`
+- **📦 PyPI Package**: Ready for `pip install url-extractor-pro`
 
 ## Installation
 
