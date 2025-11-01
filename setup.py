@@ -15,11 +15,11 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
-    name="url-extractor",
+    name="url-extractor-pro",
     version="5.0.0",
     author="ArkhAngelLifeJiggy",
     author_email="Bloomtonjovish@gmail.com",
-    description="A powerful, pure Python tool for extracting all URLs and extensions from target websites",
+    description="A powerful, pure Python tool for extracting all URLs and extensions from target websites with WAF bypass",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/LifeJiggy/URL-Extractor",
@@ -47,8 +47,8 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "url-extractor=url_extractor:main",
-            "urlextractor=url_extractor:main",
+            "url-extractor-pro=url_extractor:main",
+            "urlextractor-pro=url_extractor:main",
         ],
     },
     project_urls={
