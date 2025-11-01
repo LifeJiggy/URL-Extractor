@@ -28,34 +28,55 @@ A powerful, standalone Python tool for extracting all URLs and file extensions f
   - **Media**: `.mp4`, `.mp3`, `.avi`, `.mov`, `.wmv`, `.flv`
   - **Other**: All remaining extensions
 
-- **🛡️ WAF Bypass & Anti-Detection**:
-  - User agent rotation (5+ browsers)
-  - IP spoofing headers
-  - Smart delaying mechanisms
-  - Cache control headers
-  - Connection randomization
+- **🛡️ Advanced WAF Bypass & Anti-Detection**:
+  - User agent rotation (5+ realistic browsers)
+  - IP spoofing with X-Forwarded-For headers
+  - Smart delaying mechanisms with randomization
+  - Custom proxy support (HTTP/HTTPS)
+  - Cache control and connection header randomization
+  - Request retry mechanism with exponential backoff
 
 - **✅ Advanced Validation & Filtering**:
-  - False positive detection and removal
-  - MD5-based duplicate prevention
-  - URL normalization and validation
-  - Domain-based filtering
+  - False positive detection and removal (`data:`, `javascript:`, `mailto:`)
+  - MD5-based duplicate prevention with hash collision detection
+  - URL normalization and validation with regex patterns
+  - Domain-based filtering with subdomain support
+  - Extension-based filtering (include/exclude specific file types)
+  - Pattern matching with regex include/exclude rules
 
 - **📝 Comprehensive Logging System**:
-  - Automatic log file generation
-  - INFO, WARNING, ERROR level logging
-  - Detailed operation tracking
-  - Custom log file support
+  - Automatic timestamped log file generation
+  - INFO, WARNING, ERROR level logging with context
+  - Detailed operation tracking with performance metrics
+  - Custom log file path support
+  - Structured logging for debugging and analysis
 
 - **🎨 Beautiful Interactive Interface**:
-  - Colorful terminal output
-  - Real-time progress indicators
-  - Professional banner display
-  - Categorized results display
+  - Colorful terminal output with 8-color support
+  - Real-time progress indicators and status updates
+  - Professional ASCII banner with author credits
+  - Categorized results display with statistics
+  - Quiet mode and stats-only output options
+
+- **📊 Multiple Output Formats**:
+  - **JSON**: Structured data with categorized results and metadata
+  - **CSV**: Spreadsheet-compatible format with URL, source, type, extension columns
+  - **XML**: Machine-readable format with proper schema
+  - **Statistics Only**: Summary output for automation
+  - **Custom Formatting**: Flexible output options
+
+- **⚙️ Advanced Configuration Options** (20+ parameters):
+  - **Crawling**: `max-pages`, `max-depth`, `concurrency`, `timeout`
+  - **Security**: `waf-bypass`, `user-agent`, `proxy`, `delay`, `retries`
+  - **Filtering**: `exclude-extensions`, `include-only`, `exclude-pattern`
+  - **Output**: `csv`, `xml`, `quiet`, `stats-only`, `save-html`
+  - **Debugging**: `verbose`, `log-file`, `no-color`
 
 - **⚡ Pure Python Implementation**: No external dependencies on Go tools
 
-- **🔧 Configurable Parameters**: Control depth, page limits, threading, delays
+- **🔧 Configurable Parameters**: Fine-grained control over all aspects
+
+- **📦 PyPI Package**: Ready for `pip install url-extractor`
 
 ## Installation
 
@@ -88,13 +109,27 @@ python url_extractor.py https://example.com \
 | Option | Description | Default |
 |--------|-------------|---------|
 | `target_url` | Target URL to extract URLs from (required) | - |
-| `-o, --output` | Output file for results (JSON format) | - |
+| `-o, --output` | Output file for results (JSON/CSV/XML) | - |
 | `-v, --verbose` | Enable verbose output | False |
 | `-p, --max-pages` | Maximum pages to crawl | 100 |
 | `-d, --max-depth` | Maximum crawl depth | 3 |
 | `-t, --threads` | Number of threads for concurrent processing | 10 |
 | `--delay` | Delay between requests in seconds | 1.0 |
 | `--waf-bypass` | Enable WAF bypass techniques | False |
+| `--user-agent` | Custom user agent string | Random |
+| `--proxy` | HTTP proxy (http://proxy:port) | - |
+| `--timeout` | Request timeout in seconds | 30 |
+| `--max-js-files` | Maximum JS files to analyze | 20 |
+| `--concurrency` | Number of concurrent requests | 5 |
+| `--retries` | Number of retries for failed requests | 3 |
+| `--exclude-extensions` | Comma-separated extensions to exclude | - |
+| `--include-only` | Include only URLs containing this string | - |
+| `--exclude-pattern` | Exclude URLs matching regex pattern | - |
+| `--save-html` | Save HTML responses for analysis | False |
+| `--quiet` | Suppress all output except results | False |
+| `--stats-only` | Show only statistics, no URLs | False |
+| `--csv` | Output in CSV format | False |
+| `--xml` | Output in XML format | False |
 | `--log-file` | Custom log file path | Auto-generated |
 | `--no-color` | Disable colored output | False |
 
@@ -185,6 +220,32 @@ python url_extractor.py https://target.com \
   --threads 30 \
   --verbose \
   --output security_scan.json
+```
+
+### Advanced filtering and output options
+```bash
+# Filter specific file types and use multiple output formats
+python url_extractor.py https://site.com \
+  --exclude-extensions pdf,doc,zip,rar \
+  --include-only api \
+  --csv --xml --json \
+  --proxy http://127.0.0.1:8080 \
+  --user-agent "Custom Security Scanner v1.0"
+
+# Quiet mode for automation with custom logging
+python url_extractor.py https://target.com \
+  --quiet \
+  --stats-only \
+  --log-file /var/log/url_scan.log \
+  --exclude-pattern "\.(jpg|png|gif)$" \
+  --concurrency 10 \
+  --timeout 60
+```
+
+### PyPI Installation (Future)
+```bash
+pip install url-extractor
+url-extractor https://example.com --waf-bypass
 ```
 
 ## Dependencies
