@@ -80,8 +80,13 @@ def setup_logging(log_file=None):
 
 class PureURLExtractor:
     def __init__(self, target_url: str, output_file: str = None, verbose: bool = False,
-                 max_pages: int = 100, max_depth: int = 3, threads: int = 10,
-                 delay: float = 1.0, waf_bypass: bool = True):
+                  max_pages: int = 100, max_depth: int = 3, threads: int = 10,
+                  delay: float = 1.0, waf_bypass: bool = True, user_agent: str = None,
+                  proxy: str = None, timeout: int = 30, max_js_files: int = 20,
+                  concurrency: int = 5, retries: int = 3, exclude_extensions: str = None,
+                  include_only: str = None, exclude_pattern: str = None,
+                  save_html: bool = False, quiet: bool = False, stats_only: bool = False,
+                  csv: bool = False, xml: bool = False):
         self.target_url = target_url
         self.output_file = output_file
         self.verbose = verbose
@@ -90,6 +95,20 @@ class PureURLExtractor:
         self.threads = threads
         self.delay = delay
         self.waf_bypass = waf_bypass
+        self.user_agent = user_agent
+        self.proxy = proxy
+        self.timeout = timeout
+        self.max_js_files = max_js_files
+        self.concurrency = concurrency
+        self.retries = retries
+        self.exclude_extensions = set(ext.strip().lower() for ext in (exclude_extensions or "").split(',')) if exclude_extensions else set()
+        self.include_only = include_only
+        self.exclude_pattern = re.compile(exclude_pattern) if exclude_pattern else None
+        self.save_html = save_html
+        self.quiet = quiet
+        self.stats_only = stats_only
+        self.csv = csv
+        self.xml = xml
 
         self.domain = self.extract_domain(target_url)
         self.base_url = f"{urlparse(target_url).scheme}://{self.domain}"
@@ -156,9 +175,14 @@ class PureURLExtractor:
 
     def setup_session(self):
         """Setup session with WAF bypass headers"""
-        # Rotate user agent
+        # Set custom user agent if provided
+        if self.user_agent:
+            ua = self.user_agent
+        else:
+            ua = random.choice(self.user_agents)
+
         self.session.headers.update({
-            'User-Agent': random.choice(self.user_agents),
+            'User-Agent': ua,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Accept-Encoding': 'gzip, deflate',
@@ -167,6 +191,13 @@ class PureURLExtractor:
             'Upgrade-Insecure-Requests': '1',
         })
 
+        # Set proxy if provided
+        if self.proxy:
+            self.session.proxies = {
+                'http': self.proxy,
+                'https': self.proxy
+            }
+
         # Add some randomization to avoid detection
         if self.waf_bypass:
             self.session.headers.update({
@@ -174,6 +205,7 @@ class PureURLExtractor:
                 'Pragma': 'no-cache',
                 'X-Forwarded-For': f'192.168.{random.randint(1,255)}.{random.randint(1,255)}',
                 'X-Real-IP': f'10.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,255)}',
+                'X-Requested-With': 'XMLHttpRequest',
             })
 
     def rotate_user_agent(self):
@@ -214,6 +246,11 @@ class PureURLExtractor:
         path = parsed.path
         if '.' in path:
             ext = path.split('.')[-1].lower()
+
+            # Skip excluded extensions
+            if ext in self.exclude_extensions:
+                return
+
             if ext in ['js', 'jsx', 'ts', 'coffee', 'vue']:
                 self.categorized_extensions['javascript'][ext] += 1
             elif ext in ['html', 'htm', 'xhtml', 'xml']:
@@ -550,12 +587,13 @@ class PureURLExtractor:
         print("-" * 60)
 
         # Fetch from Wayback Machine
-        print(f"{Colors.MAGENTA}[+] Fetching URLs from Wayback Machine...{Colors.END}")
+        if not self.quiet:
+            print(f"{Colors.MAGENTA}[+] Fetching URLs from Wayback Machine...{Colors.END}")
         wayback_urls = self.fetch_wayback_urls()
         valid_wayback = 0
         total_wayback = len(wayback_urls)
 
-        if self.verbose:
+        if self.verbose and not self.quiet:
             print(f"{Colors.BLUE}[+] Processing {total_wayback} Wayback URLs...{Colors.END}")
 
         for url in wayback_urls:
@@ -564,57 +602,88 @@ class PureURLExtractor:
             is_dup = self.is_duplicate(url)
             already_exists = url in self.urls
 
+            # Apply include/exclude filters
+            if self.include_only and self.include_only not in url:
+                continue
+            if self.exclude_pattern and self.exclude_pattern.search(url):
+                continue
+
             if is_valid and not is_fp and not is_dup and not already_exists:
                 self.urls.add(url)
                 self.categorize_url(url, 'known')
                 valid_wayback += 1
-            elif self.verbose and (is_fp or is_dup):
+            elif self.verbose and not self.quiet and (is_fp or is_dup):
                 print(f"{Colors.YELLOW}[!] Filtered {url[:50]}... (FP: {is_fp}, Dup: {is_dup}){Colors.END}")
 
         self.logger.info(f"Wayback Machine: {valid_wayback}/{total_wayback} valid URLs found")
-        print(f"{Colors.GREEN}[+] Wayback Machine: {valid_wayback} valid URLs{Colors.END}")
+        if not self.quiet:
+            print(f"{Colors.GREEN}[+] Wayback Machine: {valid_wayback} valid URLs{Colors.END}")
 
         # Fetch from Common Crawl
-        print(f"{Colors.MAGENTA}[+] Fetching URLs from Common Crawl...{Colors.END}")
+        if not self.quiet:
+            print(f"{Colors.MAGENTA}[+] Fetching URLs from Common Crawl...{Colors.END}")
         common_crawl_urls = self.fetch_common_crawl_urls()
         valid_common = 0
         for url in common_crawl_urls:
             if self.is_valid_url(url) and not self.is_false_positive(url) and not self.is_duplicate(url):
                 if url not in self.urls:
+                    # Apply include/exclude filters
+                    if self.include_only and self.include_only not in url:
+                        continue
+                    if self.exclude_pattern and self.exclude_pattern.search(url):
+                        continue
+
                     self.urls.add(url)
                     self.categorize_url(url, 'known')
                     self.categorize_extension(url)
                     valid_common += 1
         self.logger.info(f"Common Crawl: {valid_common} valid URLs found")
-        print(f"{Colors.GREEN}[+] Common Crawl: {valid_common} valid URLs{Colors.END}")
+        if not self.quiet:
+            print(f"{Colors.GREEN}[+] Common Crawl: {valid_common} valid URLs{Colors.END}")
 
         # Crawl website
-        print(f"{Colors.MAGENTA}[+] Crawling website...{Colors.END}")
+        if not self.quiet:
+            print(f"{Colors.MAGENTA}[+] Crawling website...{Colors.END}")
         crawled_urls = self.crawl_website()
         valid_crawled = 0
         for url in crawled_urls:
             if self.is_valid_url(url) and not self.is_false_positive(url) and not self.is_duplicate(url):
                 if url not in self.urls:
+                    # Apply include/exclude filters
+                    if self.include_only and self.include_only not in url:
+                        continue
+                    if self.exclude_pattern and self.exclude_pattern.search(url):
+                        continue
+
                     self.urls.add(url)
                     self.categorize_url(url, 'known')
                     self.categorize_extension(url)
                     valid_crawled += 1
         self.logger.info(f"Live Crawling: {valid_crawled} valid URLs found")
-        print(f"{Colors.GREEN}[+] Live Crawling: {valid_crawled} valid URLs{Colors.END}")
+        if not self.quiet:
+            print(f"{Colors.GREEN}[+] Live Crawling: {valid_crawled} valid URLs{Colors.END}")
 
         # Fetch JavaScript files
-        print(f"{Colors.MAGENTA}[+] Analyzing JavaScript files...{Colors.END}")
+        if not self.quiet:
+            print(f"{Colors.MAGENTA}[+] Analyzing JavaScript files...{Colors.END}")
         js_urls = self.fetch_js_files()
         valid_js = 0
         for url in js_urls:
             if self.is_valid_url(url) and not self.is_false_positive(url) and not self.is_duplicate(url):
                 if url not in self.urls:
+                    # Apply include/exclude filters
+                    if self.include_only and self.include_only not in url:
+                        continue
+                    if self.exclude_pattern and self.exclude_pattern.search(url):
+                        continue
+
                     self.urls.add(url)
                     self.categorize_url(url, 'hidden')
                     self.categorize_extension(url)
                     valid_js += 1
         self.logger.info(f"JavaScript Analysis: {valid_js} valid URLs found")
-        print(f"{Colors.GREEN}[+] JavaScript Analysis: {valid_js} valid URLs{Colors.END}")
+        if not self.quiet:
+            print(f"{Colors.GREEN}[+] JavaScript Analysis: {valid_js} valid URLs{Colors.END}")
 
         print("-" * 60)
         print(f"{Colors.BOLD}{Colors.GREEN}[+] Total unique URLs found: {len(self.urls)}{Colors.END}")
@@ -651,8 +720,13 @@ class PureURLExtractor:
         }
 
         try:
-            with open(self.output_file, 'w') as f:
-                json.dump(results, f, indent=2)
+            if self.csv:
+                self.save_csv(results)
+            elif self.xml:
+                self.save_xml(results)
+            else:
+                with open(self.output_file, 'w') as f:
+                    json.dump(results, f, indent=2)
             print(f"{Colors.GREEN}[+] Results saved to: {self.output_file}{Colors.END}")
             self.logger.info(f"Results saved to: {self.output_file}")
         except Exception as e:
@@ -661,6 +735,14 @@ class PureURLExtractor:
 
     def print_summary(self) -> None:
         """Print extraction summary"""
+        if self.quiet:
+            return
+
+        if self.stats_only:
+            # Print only statistics
+            print(f"{len(self.urls)} URLs found")
+            return
+
         print(f"\n{Colors.BOLD}{Colors.CYAN}" + "="*70)
         print(" "*20 + "EXTRACTION SUMMARY")
         print("="*70 + f"{Colors.END}")
@@ -669,6 +751,8 @@ class PureURLExtractor:
         print(f"{Colors.WHITE}Domain: {Colors.GREEN}{self.domain}{Colors.END}")
         print(f"{Colors.WHITE}Total URLs: {Colors.BOLD}{Colors.GREEN}{len(self.urls)}{Colors.END}")
         print(f"{Colors.WHITE}WAF Bypass: {Colors.YELLOW}{'Enabled' if self.waf_bypass else 'Disabled'}{Colors.END}")
+        if self.proxy:
+            print(f"{Colors.WHITE}Proxy: {Colors.YELLOW}{self.proxy}{Colors.END}")
         print()
 
         print(f"{Colors.BOLD}{Colors.MAGENTA}CATEGORIZED URLs:{Colors.END}")
@@ -704,6 +788,58 @@ class PureURLExtractor:
 
         self.logger.info(f"Extraction completed. Total URLs: {len(self.urls)}")
 
+    def save_csv(self, results: dict) -> None:
+        """Save results in CSV format"""
+        import csv
+        filename = self.output_file.replace('.json', '.csv')
+
+        with open(filename, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['URL', 'Source', 'Type', 'Extension'])
+
+            for url in results['all_urls']:
+                source = 'unknown'
+                if url in results['categorized_urls']['known']:
+                    source = 'known'
+                elif url in results['categorized_urls']['hidden']:
+                    source = 'hidden'
+
+                url_type = 'external'
+                if url in results['categorized_urls']['internal']:
+                    url_type = 'internal'
+
+                ext = self.extract_extension(url)
+                writer.writerow([url, source, url_type, ext])
+
+    def save_xml(self, results: dict) -> None:
+        """Save results in XML format"""
+        from xml.etree.ElementTree import Element, SubElement, tostring
+        from xml.dom import minidom
+
+        root = Element("url_extraction_report")
+        target = SubElement(root, "target")
+        target.text = results['target_url']
+
+        domain = SubElement(root, "domain")
+        domain.text = results['domain']
+
+        total_urls = SubElement(root, "total_urls")
+        total_urls.text = str(results['total_urls'])
+
+        urls_elem = SubElement(root, "urls")
+        for url in results['all_urls']:
+            url_elem = SubElement(urls_elem, "url")
+            url_elem.text = url
+
+        # Pretty print XML
+        rough_string = tostring(root, 'utf-8')
+        reparsed = minidom.parseString(rough_string)
+        xml_str = reparsed.toprettyxml(indent="  ")
+
+        filename = self.output_file.replace('.json', '.xml')
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(xml_str)
+
 def main():
     parser = argparse.ArgumentParser(
         description="Pure Python URL Extractor - Extract all URLs and extensions from target",
@@ -727,6 +863,20 @@ def main():
     parser.add_argument('--waf-bypass', action='store_true', help='Enable WAF bypass techniques')
     parser.add_argument('--log-file', help='Custom log file path')
     parser.add_argument('--no-color', action='store_true', help='Disable colored output')
+    parser.add_argument('--user-agent', help='Custom user agent string')
+    parser.add_argument('--proxy', help='HTTP proxy (http://proxy:port)')
+    parser.add_argument('--timeout', type=int, default=30, help='Request timeout in seconds (default: 30)')
+    parser.add_argument('--max-js-files', type=int, default=20, help='Maximum JS files to analyze (default: 20)')
+    parser.add_argument('--concurrency', type=int, default=5, help='Number of concurrent requests (default: 5)')
+    parser.add_argument('--retries', type=int, default=3, help='Number of retries for failed requests (default: 3)')
+    parser.add_argument('--exclude-extensions', help='Comma-separated extensions to exclude (e.g., pdf,doc,zip)')
+    parser.add_argument('--include-only', help='Include only URLs containing this string')
+    parser.add_argument('--exclude-pattern', help='Exclude URLs matching regex pattern')
+    parser.add_argument('--save-html', action='store_true', help='Save HTML responses for analysis')
+    parser.add_argument('--quiet', action='store_true', help='Suppress all output except results')
+    parser.add_argument('--stats-only', action='store_true', help='Show only statistics, no URLs')
+    parser.add_argument('--csv', action='store_true', help='Output in CSV format')
+    parser.add_argument('--xml', action='store_true', help='Output in XML format')
 
     args = parser.parse_args()
 
@@ -751,8 +901,22 @@ def main():
             args.max_pages,
             args.max_depth,
             args.threads,
-            getattr(args, 'delay', 1.0),
-            getattr(args, 'waf_bypass', True)
+            args.delay,
+            args.waf_bypass,
+            args.user_agent,
+            args.proxy,
+            args.timeout,
+            args.max_js_files,
+            args.concurrency,
+            args.retries,
+            args.exclude_extensions,
+            args.include_only,
+            args.exclude_pattern,
+            args.save_html,
+            args.quiet,
+            args.stats_only,
+            args.csv,
+            args.xml
         )
 
         start_time = time.time()
