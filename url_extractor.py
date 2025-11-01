@@ -850,7 +850,7 @@ def main():
   python url_extractor.py https://example.com -o results.json -v -p 50 -d 2 -t 5
   python url_extractor.py https://example.com --waf-bypass --delay 2.0 --log-file custom.log
 
-{Colors.BOLD}Author:{Colors.END} Kilo Code
+{Colors.BOLD}Author:{Colors.END} ArkhAngelLifeJiggy
         """
     )
     parser.add_argument('target_url', help='Target URL to extract URLs from')

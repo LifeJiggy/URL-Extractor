@@ -23,7 +23,6 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/LifeJiggy/URL-Extractor",
-    packages=find_packages(),
     py_modules=["url_extractor"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
