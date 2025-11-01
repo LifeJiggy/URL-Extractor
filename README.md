@@ -244,8 +244,8 @@ python url_extractor.py https://target.com \
 
 ### PyPI Installation (Future)
 ```bash
-pip install url-extractor
-url-extractor https://example.com --waf-bypass
+pip install url-extractor-pro
+url-extractor-pro https://example.com --waf-bypass
 ```
 
 ## Dependencies
